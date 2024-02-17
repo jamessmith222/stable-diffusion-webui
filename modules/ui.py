@@ -1146,8 +1146,116 @@ def create_ui():
 
         modelmerger_ui.setup_ui(dummy_component=dummy_component, sd_model_checkpoint_component=settings.component_dict['sd_model_checkpoint'])
 
+<<<<<<< Updated upstream
     loadsave.dump_defaults()
     demo.ui_loadsave = loadsave
+=======
+        def modelmerger(*args):
+            try:
+                results = modules.extras.run_modelmerger(*args)
+            except Exception as e:
+                print("Error loading/saving model file:", file=sys.stderr)
+                print(traceback.format_exc(), file=sys.stderr)
+                modules.sd_models.list_models()  # to remove the potentially missing models from the list
+                return [f"Error merging checkpoints: {e}"] + [gr.Dropdown.update(choices=modules.sd_models.checkpoint_tiles()) for _ in range(4)]
+            return results
+
+        modelmerger_merge.click(
+            fn=modelmerger,
+            inputs=[
+                primary_model_name,
+                secondary_model_name,
+                tertiary_model_name,
+                interp_method,
+                interp_amount,
+                save_as_half,
+                custom_name,
+                checkpoint_format,
+                config_source,
+            ],
+            outputs=[
+                submit_result,
+                primary_model_name,
+                secondary_model_name,
+                tertiary_model_name,
+                component_dict['sd_model_checkpoint'],
+            ]
+        )
+
+    ui_config_file = cmd_opts.ui_config_file
+    ui_settings = {}
+    settings_count = len(ui_settings)
+    error_loading = False
+
+    try:
+        if os.path.exists(ui_config_file):
+            with open(ui_config_file, "r", encoding="utf8") as file:
+                ui_settings = json.load(file)
+    except Exception:
+        error_loading = True
+        print("Error loading settings:", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
+
+    def loadsave(path, x):
+        def apply_field(obj, field, condition=None, init_field=None):
+            key = path + "/" + field
+
+            if getattr(obj, 'custom_script_source', None) is not None:
+              key = 'customscript/' + obj.custom_script_source + '/' + key
+
+            if getattr(obj, 'do_not_save_to_config', False):
+                return
+
+            saved_value = ui_settings.get(key, None)
+            if saved_value is None:
+                ui_settings[key] = getattr(obj, field)
+            elif condition and not condition(saved_value):
+                print(f'Warning: Bad ui setting value: {key}: {saved_value}; Default value "{getattr(obj, field)}" will be used instead.')
+            else:
+                setattr(obj, field, saved_value)
+                if init_field is not None:
+                    init_field(saved_value)
+
+        if type(x) in [gr.Slider, gr.Radio, gr.Checkbox, gr.Textbox, gr.Number, gr.Dropdown] and x.visible:
+            apply_field(x, 'visible')
+
+        if type(x) == gr.Slider:
+            apply_field(x, 'value')
+            apply_field(x, 'minimum')
+            apply_field(x, 'maximum')
+            apply_field(x, 'step')
+
+        if type(x) == gr.Radio:
+            apply_field(x, 'value', lambda val: val in x.choices)
+
+        if type(x) == gr.Checkbox:
+            apply_field(x, 'value')
+
+        if type(x) == gr.Textbox:
+            apply_field(x, 'value')
+
+        if type(x) == gr.Number:
+            apply_field(x, 'value')
+
+        if type(x) == gr.Dropdown:
+            def check_dropdown(val):
+                if hasattr(x, 'multiselect') and x.multiselect:
+                    return all([value in x.choices for value in val])
+                else:
+                    return val in x.choices
+
+            apply_field(x, 'value', check_dropdown, getattr(x, 'init_field', None))
+
+    visit(txt2img_interface, loadsave, "txt2img")
+    visit(img2img_interface, loadsave, "img2img")
+    visit(extras_interface, loadsave, "extras")
+    visit(modelmerger_interface, loadsave, "modelmerger")
+    visit(train_interface, loadsave, "train")
+
+    if not error_loading and (not os.path.exists(ui_config_file) or settings_count != len(ui_settings)):
+        with open(ui_config_file, "w", encoding="utf8") as file:
+            json.dump(ui_settings, file, indent=4)
+>>>>>>> Stashed changes
 
     return demo
 
